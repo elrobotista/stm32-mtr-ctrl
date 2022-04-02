@@ -1,0 +1,9 @@
+--recurse=yes
+--language-force=c
+--exclude=libopencm3/**
+--exclude-exception=libopencm3/lib/stm32/f3/**
+--exclude-exception=libopencm3/lib/stm32/common/**
+--exclude-exception=libopencm3/lib/cm3/**
+--exclude-exception=libopencm3/include/libopencm3/cm3/**
+--exclude-exception=libopencm3/include/libopencm3/stm32/common/**
+--exclude-exception=libopencm3/include/libopencm3/stm32/f3/**
