@@ -57,3 +57,4 @@ bin/
 *.bin
 generated.*.ld
 tags
+.gdb_history
