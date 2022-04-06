@@ -15,5 +15,15 @@ include $(OPENCM3_DIR)/mk/genlink-config.mk
 include ../rules.mk
 include $(OPENCM3_DIR)/mk/genlink-rules.mk
 
-flash:
+debug: $(PROJECT).elf
+	pkill openocd || true
+	$(HOME)/scripts/launch_openocd.sh
+	arm-none-eabi-gdb-py3 --symbols=$(PROJECT).elf --ex="target extended-remote :3333" --ex="b main" --ex="mon reset"
+	pkill openocd || true
+
+flash: $(PROJECT).bin
+	killall openocd || true
 	st-flash --reset write $(PROJECT).bin 0x8000000
+
+erase:
+	st-flash erase
