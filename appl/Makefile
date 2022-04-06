@@ -18,7 +18,12 @@ include $(OPENCM3_DIR)/mk/genlink-rules.mk
 debug: $(PROJECT).elf
 	pkill openocd || true
 	$(HOME)/scripts/launch_openocd.sh
-	arm-none-eabi-gdb-py3 --symbols=$(PROJECT).elf --ex="target extended-remote :3333" --ex="b main" --ex="mon reset"
+	arm-none-eabi-gdb-py3 --symbols=$(PROJECT).elf \
+		--ex="target extended-remote :3333" \
+		--ex="b main" \
+		--ex="mon reset" \
+		--ex="source ../scripts/svd-dump.py" \
+		--ex="svd_load STMicro STM32F303xE.svd"
 	pkill openocd || true
 
 flash: $(PROJECT).bin
