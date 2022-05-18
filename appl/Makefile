@@ -22,8 +22,8 @@ debug: $(PROJECT).elf
 		--ex="target extended-remote :3333" \
 		--ex="b main" \
 		--ex="mon reset" \
-		--ex="source ../scripts/svd-dump.py" \
-		--ex="svd_load STMicro STM32F303xE.svd"
+		--ex="source ../../svd-tools/gdb-svd.py" \
+		--ex="svd ../../cmsis-svd/data/STMicro/STM32F303.svd"
 	pkill openocd || true
 
 flash: $(PROJECT).bin
