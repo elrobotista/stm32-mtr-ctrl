@@ -6,6 +6,8 @@
 #include "libopencm3/stm32/adc.h"
 #include "libopencm3/cm3/systick.h"
 #include "libopencm3/cm3/nvic.h"
+#include "libopencm3/cm3/cortex.h"
+
 
 #define SYSTICK_FRQ (1000)
 /* Lowest priority. As defined by the upper nibble. */
@@ -39,44 +41,56 @@
 /******************************************************************************
  * ADC Configuration.
 ******************************************************************************/
-#define ADC_CH_PHA_IFBK (1u)
-#define ADC_GPIO_PHA_IFBK (GPIO0)
-#define ADC_PORT_PHA_IFBK (GPIOA)
+typedef struct adc_conf_tag {
+  uint32_t mod;
+  uint8_t ch;
+  uint16_t pin; 
+  uint32_t port;
+} adc_conf_t;
 
+#define ADC_MOD_VBUS (ADC1)
 #define ADC_CH_VBUS (2u)
 #define ADC_GPIO_VBUS (GPIO1)
 #define ADC_PORT_VBUS (GPIOA)
 
+#define ADC_MOD_TEMP_SENS (ADC2) /* ADC12? */
+#define ADC_CH_TEMP_SENS (14u)
+#define ADC_GPIO_TEMP_SENS (GPIO2)
+#define ADC_PORT_TEMP_SENS (GPIOC)
+
+#define ADC_MOD_POT (ADC3)
 #define ADC_CH_POT (1u)
 #define ADC_PORT_POT (GPIOB)
 #define ADC_GPIO_POT (GPIO1)
 
+#define ADC_MOD_PHA_IFBK (ADC1)
+#define ADC_CH_PHA_IFBK (1u)
+#define ADC_GPIO_PHA_IFBK (GPIO0)
+#define ADC_PORT_PHA_IFBK (GPIOA)
+
+#define ADC_MOD_PHB_IFBK (ADC1)
 #define ADC_CH_PHB_IFBK (7u)
 #define ADC_GPIO_PHB_IFBK (GPIO1)
 #define ADC_PORT_PHB_IFBK (GPIOC)
 
+#define ADC_MOD_PHC_IFBK (ADC1)
 #define ADC_CH_PHC_IFBK (6u)
 #define ADC_GPIO_PHC_IFBK (GPIO0)
 #define ADC_PORT_PHC_IFBK (GPIOC)
-
-#define ADC_CH_TEMP_SENS (8u)
-#define ADC_GPIO_TEMP_SENS (GPIO2)
-#define ADC_PORT_TEMP_SENS (GPIOC)
 
 static void hw_init(void);
 static void gpio_init(void);
 static void clock_init(void);
 static void pwm_init(void);
 static void adc_init(void);
-static void adc_setup(void);
+static void adc_inj_conv_cfg(uint32_t adc, uint8_t length, uint8_t channel[], uint32_t trigger, uint32_t polarity);
 
 int main(void) {
   volatile uint16_t tmp_adc = 0u;
   hw_init();
   while(true) {
-    adc_start_conversion_regular(ADC3);
-    while(!adc_eoc(ADC3));
-    tmp_adc = adc_read_regular(ADC3);
+    while(!adc_eos(ADC1));
+    tmp_adc = adc_read_injected(ADC1, 1);
   }
   return 0;
 }
@@ -97,7 +111,7 @@ static void hw_init(void) {
   gpio_init();
   pwm_init();
   adc_init();
-  /* adc_setup(); */
+  cm_enable_interrupts();
 }
 
 static void gpio_init(void) {
@@ -261,29 +275,101 @@ static void pwm_init(void) {
   timer_enable_oc_output(TIM1, TIM_OC3);
   timer_enable_oc_output(TIM1, TIM_OC4);
 
+  /* Generate TRGO event. */
+  /* timer_set_master_mode(TIM1, TIM_CR2_MMS_COMPARE_OC4REF); */
+  timer_set_master_mode(TIM1, TIM_CR2_MMS_UPDATE);
+
   /* Need to enable main output even if break / deadtime features are not used. */
   timer_enable_break_main_output(TIM1);
   timer_enable_counter(TIM1);
 }
 
 static void adc_init(void) {
-  uint8_t adc_conv_ch[] = {
+
+  uint8_t adc_reg_conv_ch_list[] = {
     ADC_CH_POT,
+  };
+
+  uint8_t adc_inj_conv_ch_list[] = {
+    ADC_CH_PHA_IFBK,
+    ADC_CH_PHB_IFBK,
+    ADC_CH_PHC_IFBK,
   };
 
   rcc_periph_clock_enable(RCC_ADC12);
   rcc_periph_clock_enable(RCC_ADC34);
 
-  adc_power_off(ADC3);
-  adc_set_clk_prescale(ADC3, ADC_CCR_CKMODE_DIV2);
-  adc_set_single_conversion_mode(ADC3);
-  /* Equivalent to Software Start trigger. */
-  adc_disable_external_trigger_regular(ADC3);
-  adc_set_right_aligned(ADC3);
-  adc_set_sample_time_on_all_channels(ADC3, ADC_SMPR_SMP_19DOT5CYC);
-  adc_set_regular_sequence(ADC3, sizeof(adc_conv_ch), adc_conv_ch);
-  adc_set_resolution(ADC3, ADC_CFGR1_RES_12_BIT);
-  adc_calibrate(ADC3);
-  adc_power_on(ADC3);
+  /* /1* Setup regular conversions. *1/ */
+  /* adc_power_off(ADC3); */
+  /* adc_set_clk_prescale(ADC3, ADC_CCR_CKMODE_DIV2); */
+  /* adc_set_single_conversion_mode(ADC3); */
+  /* /1* Equivalent to Software Start trigger. *1/ */
+  /* adc_disable_external_trigger_regular(ADC3); */
+  /* adc_set_right_aligned(ADC3); */
+  /* adc_set_sample_time_on_all_channels(ADC3, ADC_SMPR_SMP_19DOT5CYC); */
+  /* adc_set_regular_sequence(ADC3, sizeof(adc_reg_conv_ch_list), adc_reg_conv_ch_list); */
+  /* adc_set_resolution(ADC3, ADC_CFGR1_RES_12_BIT); */
+  /* adc_calibrate(ADC3); */
+  /* adc_power_on(ADC3); */
+
+  /* Setup injected conversions for motor phases. */
+  adc_power_off(ADC1);
+  adc_set_clk_prescale(ADC1, ADC_CCR_CKMODE_DIV2);
+  adc_set_single_conversion_mode(ADC1);
+  adc_set_right_aligned(ADC1);
+  adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR_SMP_19DOT5CYC);
+  adc_enable_eos_interrupt_injected(ADC1);
+  adc_set_resolution(ADC1, ADC_CFGR1_RES_12_BIT);
+  adc_disable_discontinuous_mode_regular(ADC1);
+  adc_disable_discontinuous_mode_injected(ADC1);
+
+  nvic_set_priority(NVIC_ADC1_2_IRQ, 0);
+  nvic_enable_irq(NVIC_ADC1_2_IRQ);
+
+  adc_disable_automatic_injected_group_conversion(ADC1);
+  adc_disable_external_trigger_regular(ADC1);
+
+  adc_calibrate(ADC1);
+  adc_power_on(ADC1);
+
+  /* adc_enable_external_trigger_injected( */
+  /*     ADC1, */
+  /*     ADC_JSQR_JEXTSEL_EVENT_0, */
+  /*     ADC_JSQR_JEXTEN_RISING_EDGE */
+  /* ); */
+  /* adc_set_injected_sequence(ADC1, sizeof(adc_inj_conv_ch_list), adc_inj_conv_ch_list); */
+  adc_inj_conv_cfg(ADC1, sizeof(adc_inj_conv_ch_list), adc_inj_conv_ch_list,
+    ADC_JSQR_JEXTSEL_EVENT_0, ADC_JSQR_JEXTEN_RISING_EDGE);
+
+  adc_start_conversion_injected(ADC1);
 }
 
+static void adc_inj_conv_cfg(uint32_t adc, uint8_t length, uint8_t channel[], uint32_t trigger, uint32_t polarity)
+{
+  uint32_t reg32 = 0;
+  uint8_t i = 0;
+
+  /* Maximum sequence length is 4 channels. Minimum sequence is 1.*/
+  if ((length - 1) > 3) {
+    return;
+  }
+
+  for (i = 0; i < length; i++) {
+    reg32 |= ADC_JSQR_JSQ_VAL(4 - i, channel[length - i - 1]);
+  }
+
+  reg32 |= ADC_JSQR_JL_VAL(length);
+
+  /* Do not write just yet. */
+  /* ADC_JSQR(adc) = reg32; */
+  reg32 &= ~(ADC_JSQR_JEXTSEL_MASK | ADC_JSQR_JEXTEN_MASK);
+  reg32 |= (trigger | polarity);
+  ADC_JSQR(adc) = reg32;
+
+}
+
+void adc1_2_isr(void)
+{
+  ADC_ISR(ADC1) &= ~((uint32_t)ADC_ISR_EOS | (uint32_t)ADC_ISR_EOC);
+  ADC_ISR(ADC2) &= ~((uint32_t)ADC_ISR_EOS | (uint32_t)ADC_ISR_EOC);
+}
